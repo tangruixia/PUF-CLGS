@@ -1,1 +1,174 @@
+%%%%%cs%%%%%%
+role cs (CS,CD,RD: agent,
+		 XCS : public_key,
+		 H : hash_func,
+		 SND1, RCV1: channel(dy),
+		 SSC : symmetric_key)
+		
+played_by CS def=
+	
+	local State : nat,
+		  X : text,
+		  CDID, XCD, RK, YCD, T1, ZCD, RK1, ACC, SCDID, T0, CR,SC2 : message		  
+	
+	init State := 0
+
+  transition
+    1.      State = 0 /\ RCV1(CDID'.T0'.SCDID') /\ SCDID' = {CDID'.T0'}_SSC
+	     =|>
+			State' := 1
+		 /\ XCD' := {H(CDID'.T0'.XCS)}_SSC
+		 /\ SND1(CDID'.T0'.XCD')
+	2.		State = 1 /\ RCV1(CDID.RK'.T1'.CR') /\ CR' = {CDID.RK'.T1'}_SSC
+		 =|>
+			State' := 2
+		 /\ YCD' := H(CDID.RK.XCD.T1')
+		 /\ SND1(YCD')
+	3.		State = 2 /\ RCV1(RK1'.ZCD'.SC2') /\ SC2' = {RK1'.ZCD'}_SSC
+		 =|>
+			State' := 3
+		 /\ ACC' := new()
+		 /\ SND1(ACC'.{ACC'}_SSC)	
+		 
+end role
+%%%%%cd%%%%%%
+role cd (CS,CD,RD: agent,
+		 XCS : public_key,
+		 H : hash_func,
+		 SND1, RCV1, SND2, RCV2 : channel(dy),
+		 SRC,SSC : symmetric_key)
+		
+played_by CD def=
+
+	local State : nat,
+		  X : text,
+		  CDID, XCD, C1, C2, C3, RK, YCD, T1,T0,
+		  RK1, ZCD, R1, R2, R3, RDI,ACC,R,RR,AC,RC : message	
+
+	const r_wit : protocol_id
+	
+	init State := 0
+
+  transition
+    1.      State = 0 /\ RCV1(start)
+	     =|>
+			State' := 1
+		 /\	CDID' := new()
+		 /\ T0' := new()
+		 /\ SND1(CDID'.T0'.{CDID'.T0'}_SSC)
+	2.      State = 1 /\ RCV1(CDID.T0.XCD') /\ XCD' = {H(CDID.T0.XCS)}_SSC
+	     =|>
+			State' := 2 
+		 /\ C1' := new()
+		 /\ C2' := new()
+		 /\ C3' := new()
+		 /\ SND2(C1'.C2'.C3'.CDID.{C1'.C2'.C3'.CDID}_SRC)
+    3.      State = 2 /\ RCV2(RDI'.R1'.R2'.R3'.RR') /\ RR' = {RDI'.R1'.R2'.R3'}_SRC
+	     =|>
+			State' := 3 
+		 /\	RK' := new()
+		 /\ T1' := new()
+		 /\ SND1(CDID.RK'.T1'.{CDID.RK'.T1'}_SSC)
+    4.      State = 3 /\ RCV1(YCD') /\ YCD' = H(CDID.RK.XCD.T1')
+	     =|>
+			State' := 4
+		 /\ RK1' := new()
+		 /\ ZCD' := H(CDID, RK1', X, T1)
+		 /\ SND1(RK1'.ZCD'.{RK1'.ZCD'}_SSC)
+    5.      State = 4 /\ RCV1(ACC'.AC') /\ AC' = {ACC'}_SSC
+	     =|>
+			State' := 5 
+		 /\ SND2(C1,C2,C3.CDID.{C1.C2.C3.CDID}_SRC)
+	6.		State = 5 /\ RCV2(R'.RDI.RC') /\ RC' = {R'.RDI}_SRC
+		 =|>
+			State' := 6
+		 /\ request(CD,RD,r_wit,R1)
+end role
+%%%%%rd%%%%%%
+role rd (CS,CD,RD: agent,
+		 XCS : public_key,
+		 H : hash_func,
+		 SND2, RCV2 : channel(dy),
+		 SRC : symmetric_key)
+		
+played_by RD def=
+
+	local State : nat,
+		  C1, C2, C3, RDI, R1, R2, R3, R,CDID, SC : message
+		  
+	const r_wit : protocol_id
+	
+	init State := 0
+
+  transition
+  	1.      State = 0 /\ RCV2(C1'.C2'.C3'.CDID'.SC') /\ SC' = {C1'.C2'.C3'.CDID'}_SRC
+	     =|>
+			State' := 1
+		 /\ RDI' := new()
+		 /\ R1' := new()
+		 /\ R2' := new()
+		 /\ R3' := new()
+		 /\ SND2(RDI'.R1'.R2'.R3'.{RDI'.R1'.R2'.R3'}_SRC)
+	2.      State = 1 /\ RCV2(C1.C2.C3.SC)
+	     =|>
+			State' := 2
+		 /\ R' := H(R1.R2.R3)
+		 /\ SND2(R'.RDI.{R'.RDI}_SRC)
+		 /\ witness(RD,CD,r_wit,R1)
+
+end role
+%%%%%session%%%%%%
+role session(CS,CD,RD: agent,
+			 XCS : public_key,
+			 H : hash_func,
+			 SRC,SSC : symmetric_key)
+def=
+
+  local
+        SND1, RCV1, SND2, RCV2 : channel(dy)
+
+  composition
+   cs(CS,CD,RD,XCS,H,SND1,RCV1,SSC)
+   /\ cd(CS,CD,RD,XCS,H,SND1, RCV1, SND2, RCV2,SRC,SSC)
+   /\ rd(CS,CD,RD,XCS,H,SND2,RCV2,SRC)
+end role
+%%%%%environment%%%%%
+role environment() def=
+
+  const cs,cd,rd    : agent,
+        xcs,pki : public_key,
+		src,ssc : symmetric_key,
+        h : hash_func,
+        x : text
+ intruder_knowledge = 
+      {cs, cd, rd, xcs,inv(pki), h,x}
+
+  composition
+     session(cs,cd,rd,xcs,h,src,ssc)
+  %/\ session(i,cd,rd,pki,h,src,ssc)
+  %/\ session(cs,i,rd,xcs,h,src,ssc)
+  %/\ session(cs,cd,i,xcs,h,src,ssc)  
+
+end role
+%%%%%goal%%%%%%
+goal
+  authentication_on r_wit
+end goal
+%%%%%%%%%%%
+environment()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
